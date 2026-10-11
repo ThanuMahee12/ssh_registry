@@ -1,0 +1,31 @@
+# =============================================================================
+# ssh_registry settings
+#
+# Where the host data lives and where the generated ssh config goes. No secrets
+# and no server details here: the hosts themselves are JSONL files in S3.
+#
+# Per-user overrides: copy any section to ~/.config/ssh_registry/settings.toml.
+# Values there win over this file. `~` expands to the running user's home.
+# =============================================================================
+
+[source]
+# Host data: one JSONL file per group (cw_alchmy.jsonl, cw_github.jsonl, ...).
+# The bucket blocks public access, so this is read with the AWS CLI using the
+# caller's own credentials, never over plain https.
+bucket = "thanudev12"
+region = "us-east-2"
+prefix = "shellrc/ssh_registry/"
+
+[cache]
+# Last good copy of the JSONL. Used when S3 is unreachable, so a network blip
+# never leaves you without an ssh config.
+dir = "~/.cache/ssh_registry"
+
+[output]
+# The generated config. ~/.ssh/config Includes it; never edit it by hand.
+config = "~/.ssh/ssh_registry.config"
+
+[identity]
+# Corporate login substituted wherever a host says "user": "@me".
+# Leave empty here; set it per user in ~/.config/ssh_registry/settings.toml.
+me = ""
