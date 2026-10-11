@@ -38,7 +38,7 @@ file = "~/.shellrc/cred.toml"
 # A [hosts] entry is a fact about one box (dev-alchmy only accepts ec2-user),
 # so nothing overrides it. A [modules] entry is a sensible default (git hosts
 # log in as `git`) that your own cred.toml [<module>] may still change.
-# Keys come only from cred.toml: [<module>] key, else [global] key.
+# Keys come only from cred.toml, as a file path: [<module>] key, else [global].
 
 [modules.cw_github]
 user = "git"

@@ -11,7 +11,6 @@ only wildcard-free names; they hijack scp/rsync, so they are interactive only.
 
 from __future__ import annotations
 
-from .creds import key_path
 from .hosts import Host
 
 
@@ -32,7 +31,8 @@ def _host_lines(h: Host) -> list[tuple[str, str]]:
         lines.append(("ProxyJump", h.proxy))
     if h.forward_agent:
         lines.append(("ForwardAgent", "yes"))
-    lines += [("IdentityFile", key_path(k)) for k in h.keys]
+    if h.key:
+        lines.append(("IdentityFile", h.key))
     if h.identities_only:
         lines.append(("IdentitiesOnly", "yes"))
     lines += list(h.options.items())

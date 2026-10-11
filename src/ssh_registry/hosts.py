@@ -58,7 +58,7 @@ class Host:
     options: dict[str, str] = field(default_factory=dict)
     note: str | None = None
     user: str | None = None
-    keys: tuple[str, ...] = ()
+    key: str | None = None
 
     @property
     def names(self) -> list[str]:
@@ -159,16 +159,16 @@ def _check_set(hosts: list[Host]) -> None:
 
 
 def apply_logins(hosts: list[Host], s: Settings) -> list[Host]:
-    """Fill user and keys from cred.toml + settings.toml; every host needs a user."""
+    """Fill user and key from cred.toml + settings.toml; every host needs a user."""
     missing = []
     for h in hosts:
         login = s.login_for(h.name, h.module)
-        h.user, h.keys = login.user, login.keys
+        h.user, h.key = login.user, login.key
         if not h.user:
             missing.append(h.name)
     if missing:
         raise RegistryError(
             f"no login for {len(missing)} host(s) (first: {missing[0]}). Set yours once:\n\n"
-            "  shellrc config --global --user your.login --key id_ed25519"
+            "  shellrc config --global --user your.login --key ~/.ssh/id_ed25519"
         )
     return hosts

@@ -160,7 +160,7 @@ def cmd_config(args, s) -> int:
         raise RegistryError("say where: --global (every host) or --module <name>")
     if section is None:  # show
         if not s.cred_file.is_file():
-            print(f"{s.cred_file}: not set yet. Start with:\n  shellrc config --global --user your.login --key id_ed25519")
+            print(f"{s.cred_file}: not set yet. Start with:\n  shellrc config --global --user your.login --key ~/.ssh/id_ed25519")
             return 0
         print(f"# {s.cred_file}")
         sys.stdout.write(creds_mod.dump(s.creds).split("\n", 2)[2])
@@ -171,6 +171,10 @@ def cmd_config(args, s) -> int:
         known = {p.stem for p in s.cache_dir.glob("*.jsonl")}
         if known and args.module not in known:
             warn(f"module '{args.module}' is not in the registry ({', '.join(sorted(known))}); saved anyway")
+    if args.key is not None:
+        note = creds_mod.check_key(args.key)
+        if note:
+            warn(note)
     creds_mod.set_values(s.cred_file, section, args.user, args.key, args.unset)
     print(f"saved [{section}] in {s.cred_file}. Run `shellrc generate` to apply it.")
     return 0
@@ -207,7 +211,7 @@ def main(argv: list[str] | None = None) -> int:
     where.add_argument("--global", dest="glob", action="store_true", help="for every host")
     where.add_argument("--module", help="for one module, e.g. cw_alchmy")
     cf.add_argument("--user", help="login name")
-    cf.add_argument("--key", action="append", help="key file name under ~/.ssh, or a path; repeat for several")
+    cf.add_argument("--key", help="path to your private key file, e.g. ~/.ssh/id_ed25519")
     cf.add_argument("--unset", action="append", choices=["user", "key"], help="remove a value")
     cf.set_defaults(fn=cmd_config)
 

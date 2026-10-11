@@ -22,7 +22,7 @@ from . import creds as creds_mod
 @dataclass(frozen=True)
 class Login:
     user: str | None = None
-    keys: tuple[str, ...] = ()
+    key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -54,9 +54,7 @@ class Settings:
         user = m.get("user", user)
         if repo_host and repo_host.user is not None:
             user = repo_host.user
-        key = m.get("key", g.get("key"))
-        keys = (key,) if isinstance(key, str) else tuple(key or ())
-        return Login(user or None, keys)
+        return Login(user or None, m.get("key", g.get("key")))
 
 
 def _read(path: Path) -> dict:
