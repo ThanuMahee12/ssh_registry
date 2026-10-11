@@ -8,8 +8,8 @@ Each line is a GROUP: settings shared by its servers, plus the servers.
                   "host": "10.0.0.1"}]}
 
 A field set on a server overrides the same field on its group. There are no
-users here (settings.toml supplies them) and no keys at all, so one set of
-files serves every person.
+users or keys here - each user's ~/.shellrc/cred.toml supplies them - so one
+set of files serves every person.
 """
 
 from __future__ import annotations
@@ -58,6 +58,7 @@ class Host:
     options: dict[str, str] = field(default_factory=dict)
     note: str | None = None
     user: str | None = None
+    keys: tuple[str, ...] = ()
 
     @property
     def names(self) -> list[str]:
@@ -158,15 +159,16 @@ def _check_set(hosts: list[Host]) -> None:
 
 
 def apply_logins(hosts: list[Host], s: Settings) -> list[Host]:
-    """Fill the login from settings.toml; every host must end up with a user."""
+    """Fill user and keys from cred.toml + settings.toml; every host needs a user."""
     missing = []
     for h in hosts:
-        h.user = s.login_for(h.name, h.module).user
+        login = s.login_for(h.name, h.module)
+        h.user, h.keys = login.user, login.keys
         if not h.user:
             missing.append(h.name)
     if missing:
         raise RegistryError(
-            f"no login for {len(missing)} host(s) (first: {missing[0]}): [identity] user is empty.\n"
-            "Set it in ~/.config/ssh_registry/settings.toml:\n\n  [identity]\n  user = \"your.login\""
+            f"no login for {len(missing)} host(s) (first: {missing[0]}). Set yours once:\n\n"
+            "  shellrc config --global --user your.login --key id_ed25519"
         )
     return hosts

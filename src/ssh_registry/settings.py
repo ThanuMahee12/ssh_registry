@@ -16,9 +16,13 @@ def user_settings_path() -> Path:
     return Path(base) / "ssh_registry" / "settings.toml"
 
 
+from . import creds as creds_mod
+
+
 @dataclass(frozen=True)
 class Login:
     user: str | None = None
+    keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -28,7 +32,8 @@ class Settings:
     prefix: str
     cache_dir: Path
     output: Path
-    identity: Login
+    cred_file: Path
+    creds: dict[str, dict] = field(default_factory=dict)
     modules: dict[str, Login] = field(default_factory=dict)
     hosts: dict[str, Login] = field(default_factory=dict)
     ssh_defaults: dict[str, str] = field(default_factory=dict)
@@ -38,12 +43,20 @@ class Settings:
         return f"s3://{self.bucket}/{self.prefix.strip('/')}/"
 
     def login_for(self, host: str, module: str) -> Login:
-        """[hosts.<name>] beats [modules.<module>] beats [identity]."""
-        user = self.identity.user
-        for layer in (self.modules.get(module), self.hosts.get(host)):
-            if layer and layer.user is not None:
-                user = layer.user
-        return Login(user or None)
+        """User: [hosts.x] > cred [module] > [modules.m] > cred [global].
+        Key: cred [module] > cred [global]."""
+        g = self.creds.get(creds_mod.GLOBAL, {})
+        m = self.creds.get(module, {})
+        user = g.get("user")
+        repo_module, repo_host = self.modules.get(module), self.hosts.get(host)
+        if repo_module and repo_module.user is not None:
+            user = repo_module.user
+        user = m.get("user", user)
+        if repo_host and repo_host.user is not None:
+            user = repo_host.user
+        key = m.get("key", g.get("key"))
+        keys = (key,) if isinstance(key, str) else tuple(key or ())
+        return Login(user or None, keys)
 
 
 def _read(path: Path) -> dict:
@@ -76,7 +89,8 @@ def load(repo_file: Path = REPO_SETTINGS, user_file: Path | None = None) -> Sett
             prefix=data["source"]["prefix"],
             cache_dir=Path(os.path.expanduser(data["cache"]["dir"])),
             output=Path(os.path.expanduser(data["output"]["config"])),
-            identity=_login(data.get("identity", {}), "identity"),
+            cred_file=(cf := Path(os.path.expanduser(data.get("credentials", {}).get("file", "~/.shellrc/cred.toml")))),
+            creds=creds_mod.load(cf),
             modules={k: _login(v, f"modules.{k}") for k, v in data.get("modules", {}).items()},
             hosts={k: _login(v, f'hosts."{k}"') for k, v in data.get("hosts", {}).items()},
             ssh_defaults={k: str(v) for k, v in data.get("ssh_defaults", {}).items()},

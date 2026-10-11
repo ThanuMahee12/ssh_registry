@@ -1,10 +1,10 @@
 # =============================================================================
 # ssh_registry settings
 #
-# Where the host data lives, where the generated ssh config goes, and WHO logs
-# in. The JSONL in S3 holds servers only - no users - so the same files serve
-# every person. Keys are not managed here at all: ssh uses its defaults
-# (~/.ssh/id_ed25519, ...) and the agent; anything else is your own business.
+# Where the host data lives and where the generated ssh config goes. The JSONL
+# in S3 holds servers only - no users, no keys - so the same files serve every
+# person. Each user's login and key live in their own ~/.shellrc/cred.toml,
+# written by `shellrc config`.
 #
 # Per-user overrides: copy any section to ~/.config/ssh_registry/settings.toml.
 # Values there win over this file, key by key. `~` expands to the user's home.
@@ -27,13 +27,18 @@ dir = "~/.cache/ssh_registry"
 # The generated config. ~/.ssh/config Includes it; never edit it by hand.
 config = "~/.ssh/ssh_registry.config"
 
-# --- who logs in ------------------------------------------------------------
-# Most specific wins: [hosts."<name>"] > [modules.<module>] > [identity].
+[credentials]
+# Per-user login and key choices; `shellrc config` writes it (0600).
+file = "~/.shellrc/cred.toml"
 
-[identity]
-# Your corporate login - the default for every host. Leave empty here and set
-# it in ~/.config/ssh_registry/settings.toml, because this file is shared.
-user = ""
+# --- who logs in -------------------------------------------------------------
+# Most specific wins:
+#   [hosts."<name>"] below  >  cred.toml [<module>]  >  [modules.<module>] below
+#   >  cred.toml [global]
+# A [hosts] entry is a fact about one box (dev-alchmy only accepts ec2-user),
+# so nothing overrides it. A [modules] entry is a sensible default (git hosts
+# log in as `git`) that your own cred.toml [<module>] may still change.
+# Keys come only from cred.toml: [<module>] key, else [global] key.
 
 [modules.cw_github]
 user = "git"
