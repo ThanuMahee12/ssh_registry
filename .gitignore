@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# host data lives in S3, never in git
+*.jsonl
+!tests/fixtures/*.jsonl

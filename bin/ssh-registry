@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Launcher: run ssh-registry through uv from any user account.
+#
+# The repo may be root-owned and shared (/opt/shellrc), so uv cannot keep its
+# virtualenv inside it. Each user gets their own under ~/.cache instead, and
+# --frozen means uv never rewrites the committed uv.lock.
+set -euo pipefail
+
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+if ! command -v uv >/dev/null 2>&1; then
+    echo "ssh-registry: uv is not installed - https://docs.astral.sh/uv/" >&2
+    exit 127
+fi
+
+export UV_PROJECT_ENVIRONMENT="${XDG_CACHE_HOME:-$HOME/.cache}/ssh_registry/venv"
+export PYTHONDONTWRITEBYTECODE=1
+exec uv run --quiet --frozen --no-dev --project "$here" ssh-registry "$@"

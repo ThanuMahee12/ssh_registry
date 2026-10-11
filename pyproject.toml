@@ -1,0 +1,17 @@
+[project]
+name = "ssh-registry"
+version = "0.1.0"
+description = "Generate each machine's ssh config from host JSONL kept in S3"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+ssh-registry = "ssh_registry.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["uv_build>=0.8.3,<0.9"]
+build-backend = "uv_build"
