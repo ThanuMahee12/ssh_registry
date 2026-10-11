@@ -19,7 +19,6 @@ def user_settings_path() -> Path:
 @dataclass(frozen=True)
 class Login:
     user: str | None = None
-    keys: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -39,13 +38,12 @@ class Settings:
         return f"s3://{self.bucket}/{self.prefix.strip('/')}/"
 
     def login_for(self, host: str, module: str) -> Login:
-        """[hosts.<name>] beats [modules.<module>] beats [identity], per field."""
-        user, keys = self.identity.user, self.identity.keys
+        """[hosts.<name>] beats [modules.<module>] beats [identity]."""
+        user = self.identity.user
         for layer in (self.modules.get(module), self.hosts.get(host)):
-            if layer:
-                user = layer.user if layer.user is not None else user
-                keys = layer.keys if layer.keys is not None else keys
-        return Login(user or None, keys or ())
+            if layer and layer.user is not None:
+                user = layer.user
+        return Login(user or None)
 
 
 def _read(path: Path) -> dict:
@@ -63,15 +61,10 @@ def _merge(base: dict, override: dict) -> dict:
 
 
 def _login(raw: dict, where: str) -> Login:
-    unknown = set(raw) - {"user", "key"}
+    unknown = set(raw) - {"user"}
     if unknown:
-        raise SystemExit(f"settings.toml [{where}]: unknown key(s) {sorted(unknown)}; use user / key")
-    key = raw.get("key")
-    if isinstance(key, str):
-        key = (key,)
-    elif key is not None:
-        key = tuple(key)
-    return Login(raw.get("user"), key)
+        raise SystemExit(f"settings.toml [{where}]: unknown key(s) {sorted(unknown)}; only user is allowed")
+    return Login(raw.get("user"))
 
 
 def load(repo_file: Path = REPO_SETTINGS, user_file: Path | None = None) -> Settings:

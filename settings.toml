@@ -2,8 +2,9 @@
 # ssh_registry settings
 #
 # Where the host data lives, where the generated ssh config goes, and WHO logs
-# in with WHICH key. The JSONL in S3 holds servers only - no users, no keys -
-# so the same files serve every person.
+# in. The JSONL in S3 holds servers only - no users - so the same files serve
+# every person. Keys are not managed here at all: ssh uses its defaults
+# (~/.ssh/id_ed25519, ...) and the agent; anything else is your own business.
 #
 # Per-user overrides: copy any section to ~/.config/ssh_registry/settings.toml.
 # Values there win over this file, key by key. `~` expands to the user's home.
@@ -26,27 +27,22 @@ dir = "~/.cache/ssh_registry"
 # The generated config. ~/.ssh/config Includes it; never edit it by hand.
 config = "~/.ssh/ssh_registry.config"
 
-# --- who logs in, and with which key ------------------------------------------
+# --- who logs in ------------------------------------------------------------
 # Most specific wins: [hosts."<name>"] > [modules.<module>] > [identity].
-# `key` is a file name under ~/.ssh, or a list of them tried in order.
 
 [identity]
 # Your corporate login - the default for every host. Leave empty here and set
 # it in ~/.config/ssh_registry/settings.toml, because this file is shared.
 user = ""
-key = "id_ed25519"
 
 [modules.cw_github]
 user = "git"
 
 [modules.cw_gitlab]
 user = "git"
-# This box uses id_ed25519, the Windows PC id_gitlab; ssh skips a missing one.
-key = ["id_ed25519", "id_gitlab"]
 
 [hosts."dev-alchmy"]
 user = "ec2-user"
-key = "ec2-pair.pem"
 
 # --- defaults for every host (written as `Host *`, last) ---------------------
 [ssh_defaults]
