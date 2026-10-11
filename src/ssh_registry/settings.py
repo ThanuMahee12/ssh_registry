@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO_DIR = Path(__file__).resolve().parents[2]
@@ -17,17 +17,35 @@ def user_settings_path() -> Path:
 
 
 @dataclass(frozen=True)
+class Login:
+    user: str | None = None
+    keys: tuple[str, ...] | None = None
+
+
+@dataclass(frozen=True)
 class Settings:
     bucket: str
     region: str
     prefix: str
     cache_dir: Path
     output: Path
-    me: str
+    identity: Login
+    modules: dict[str, Login] = field(default_factory=dict)
+    hosts: dict[str, Login] = field(default_factory=dict)
+    ssh_defaults: dict[str, str] = field(default_factory=dict)
 
     @property
     def s3_uri(self) -> str:
         return f"s3://{self.bucket}/{self.prefix.strip('/')}/"
+
+    def login_for(self, host: str, module: str) -> Login:
+        """[hosts.<name>] beats [modules.<module>] beats [identity], per field."""
+        user, keys = self.identity.user, self.identity.keys
+        for layer in (self.modules.get(module), self.hosts.get(host)):
+            if layer:
+                user = layer.user if layer.user is not None else user
+                keys = layer.keys if layer.keys is not None else keys
+        return Login(user or None, keys or ())
 
 
 def _read(path: Path) -> dict:
@@ -38,17 +56,22 @@ def _read(path: Path) -> dict:
 
 
 def _merge(base: dict, override: dict) -> dict:
-    out = {k: dict(v) if isinstance(v, dict) else v for k, v in base.items()}
-    for section, values in override.items():
-        if isinstance(values, dict):
-            out.setdefault(section, {}).update(values)
-        else:
-            out[section] = values
+    out = dict(base)
+    for k, v in override.items():
+        out[k] = _merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
     return out
 
 
-def _path(value: str) -> Path:
-    return Path(os.path.expanduser(value))
+def _login(raw: dict, where: str) -> Login:
+    unknown = set(raw) - {"user", "key"}
+    if unknown:
+        raise SystemExit(f"settings.toml [{where}]: unknown key(s) {sorted(unknown)}; use user / key")
+    key = raw.get("key")
+    if isinstance(key, str):
+        key = (key,)
+    elif key is not None:
+        key = tuple(key)
+    return Login(raw.get("user"), key)
 
 
 def load(repo_file: Path = REPO_SETTINGS, user_file: Path | None = None) -> Settings:
@@ -58,9 +81,12 @@ def load(repo_file: Path = REPO_SETTINGS, user_file: Path | None = None) -> Sett
             bucket=data["source"]["bucket"],
             region=data["source"]["region"],
             prefix=data["source"]["prefix"],
-            cache_dir=_path(data["cache"]["dir"]),
-            output=_path(data["output"]["config"]),
-            me=data.get("identity", {}).get("me", ""),
+            cache_dir=Path(os.path.expanduser(data["cache"]["dir"])),
+            output=Path(os.path.expanduser(data["output"]["config"])),
+            identity=_login(data.get("identity", {}), "identity"),
+            modules={k: _login(v, f"modules.{k}") for k, v in data.get("modules", {}).items()},
+            hosts={k: _login(v, f'hosts."{k}"') for k, v in data.get("hosts", {}).items()},
+            ssh_defaults={k: str(v) for k, v in data.get("ssh_defaults", {}).items()},
         )
     except KeyError as e:
         raise SystemExit(f"settings.toml: missing key {e} (checked {repo_file} and the user override)")

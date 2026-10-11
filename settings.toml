@@ -1,15 +1,16 @@
 # =============================================================================
 # ssh_registry settings
 #
-# Where the host data lives and where the generated ssh config goes. No secrets
-# and no server details here: the hosts themselves are JSONL files in S3.
+# Where the host data lives, where the generated ssh config goes, and WHO logs
+# in with WHICH key. The JSONL in S3 holds servers only - no users, no keys -
+# so the same files serve every person.
 #
 # Per-user overrides: copy any section to ~/.config/ssh_registry/settings.toml.
-# Values there win over this file. `~` expands to the running user's home.
+# Values there win over this file, key by key. `~` expands to the user's home.
 # =============================================================================
 
 [source]
-# Host data: one JSONL file per group (cw_alchmy.jsonl, cw_github.jsonl, ...).
+# Host data: one JSONL file per module (cw_alchmy.jsonl, cw_github.jsonl, ...).
 # The bucket blocks public access, so this is read with the AWS CLI using the
 # caller's own credentials, never over plain https.
 bucket = "thanudev12"
@@ -25,7 +26,32 @@ dir = "~/.cache/ssh_registry"
 # The generated config. ~/.ssh/config Includes it; never edit it by hand.
 config = "~/.ssh/ssh_registry.config"
 
+# --- who logs in, and with which key ------------------------------------------
+# Most specific wins: [hosts."<name>"] > [modules.<module>] > [identity].
+# `key` is a file name under ~/.ssh, or a list of them tried in order.
+
 [identity]
-# Corporate login substituted wherever a host says "user": "@me".
-# Leave empty here; set it per user in ~/.config/ssh_registry/settings.toml.
-me = ""
+# Your corporate login - the default for every host. Leave empty here and set
+# it in ~/.config/ssh_registry/settings.toml, because this file is shared.
+user = ""
+key = "id_ed25519"
+
+[modules.cw_github]
+user = "git"
+
+[modules.cw_gitlab]
+user = "git"
+# This box uses id_ed25519, the Windows PC id_gitlab; ssh skips a missing one.
+key = ["id_ed25519", "id_gitlab"]
+
+[hosts."dev-alchmy"]
+user = "ec2-user"
+key = "ec2-pair.pem"
+
+# --- defaults for every host (written as `Host *`, last) ---------------------
+[ssh_defaults]
+ServerAliveInterval = "60"
+ServerAliveCountMax = "3"
+TCPKeepAlive = "yes"
+Compression = "yes"
+AddKeysToAgent = "yes"

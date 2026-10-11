@@ -1,13 +1,15 @@
-"""Load and validate host rows from the *.jsonl files.
+"""Load and validate the module files (*.jsonl).
 
-One row per line:
+Each line is a GROUP: settings shared by its servers, plus the servers.
 
-    {"host": "alchmy_ny5p01", "hostname": "10.0.0.1", "user": "@me",
-     "proxy": "sf_jump", "forward_agent": true, "keys": ["id_ed25519"],
-     "svc": {"P": "svc_dat_alchemy"}}
+    {"proxy": "sf_jump", "forward_agent": true,
+     "service_users": [{"flag": "P", "user": "svc_dat_alchemy"}],
+     "servers": [{"host_name": "ny5-predpalch01", "aliases": ["alchmy_ny5p01"],
+                  "host": "10.0.0.1"}]}
 
-"user": "@me" is replaced by settings [identity] me, so the files themselves
-hold no person's login and serve every user.
+A field set on a server overrides the same field on its group. There are no
+users or keys here: those come from settings.toml, so one set of files serves
+every person.
 """
 
 from __future__ import annotations
@@ -17,26 +19,24 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-ME = "@me"
+from .settings import Settings
 
-FIELDS = {
-    "host": str,
-    "aliases": list,
-    "hostname": str,
-    "port": int,
-    "user": str,
+# field -> type, for both levels; "servers" only on a group, the rest anywhere
+SHARED = {
     "proxy": str,
-    "keys": list,
+    "port": int,
     "forward_agent": bool,
     "identities_only": bool,
-    "svc": dict,
+    "service_users": list,
     "options": dict,
     "note": str,
 }
+GROUP = {**SHARED, "servers": list}
+SERVER = {**SHARED, "host_name": str, "host": str, "aliases": list}
 
-# Host names become ssh patterns: no whitespace, and wildcards only where meant.
-NAME = re.compile(r"^[A-Za-z0-9._@*?-]+$")
-SVC_KEY = re.compile(r"^[A-Za-z0-9]+$")
+NAME = re.compile(r"^[A-Za-z0-9._@-]+$")
+FLAG = re.compile(r"^[A-Za-z0-9]+$")
+KEYWORD = re.compile(r"^[A-Za-z]+$")
 
 
 class RegistryError(Exception):
@@ -45,57 +45,81 @@ class RegistryError(Exception):
 
 @dataclass
 class Host:
-    host: str
+    name: str
+    hostname: str
+    module: str
     source: str  # "file.jsonl:line", for error messages
-    hostname: str | None = None
     aliases: list[str] = field(default_factory=list)
     port: int | None = None
-    user: str | None = None
     proxy: str | None = None
-    keys: list[str] = field(default_factory=list)
     forward_agent: bool = False
     identities_only: bool = False
-    svc: dict[str, str] = field(default_factory=dict)
+    service_users: dict[str, str] = field(default_factory=dict)  # flag -> account
     options: dict[str, str] = field(default_factory=dict)
     note: str | None = None
+    user: str | None = None
+    keys: tuple[str, ...] = ()
 
     @property
-    def is_pattern(self) -> bool:
-        return "*" in self.host or "?" in self.host
+    def names(self) -> list[str]:
+        return [self.name, *self.aliases]
 
     def svc_hosts(self) -> list[str]:
-        return [f"{self.host}_svc{k}" for k in self.svc]
+        return [f"{n}_svc{f}" for n in self.names for f in self.service_users]
 
 
-def _row(raw: dict, where: str) -> Host:
+def _typecheck(raw: dict, spec: dict, where: str, what: str) -> None:
     if not isinstance(raw, dict):
-        raise RegistryError(f"{where}: a row must be a JSON object")
-    unknown = sorted(set(raw) - set(FIELDS))
+        raise RegistryError(f"{where}: a {what} must be a JSON object")
+    unknown = sorted(set(raw) - set(spec))
     if unknown:
-        raise RegistryError(f"{where}: unknown field(s) {unknown}; allowed: {sorted(FIELDS)}")
-    for key, typ in FIELDS.items():
-        if key in raw and not isinstance(raw[key], typ) or (typ is int and isinstance(raw.get(key), bool)):
-            raise RegistryError(f"{where}: '{key}' must be {typ.__name__}")
-    if "host" not in raw:
-        raise RegistryError(f"{where}: 'host' is required")
+        raise RegistryError(f"{where}: unknown {what} field(s) {unknown}; allowed: {sorted(spec)}")
+    for key, typ in spec.items():
+        v = raw.get(key)
+        if key in raw and (not isinstance(v, typ) or (typ is int and isinstance(v, bool))):
+            raise RegistryError(f"{where}: {what} '{key}' must be {typ.__name__}")
 
-    h = Host(source=where, **raw)
-    for name in [h.host, *h.aliases]:
-        if not isinstance(name, str) or not NAME.match(name):
-            raise RegistryError(f"{where}: bad host name {name!r}")
-    if not h.is_pattern and not h.hostname:
-        raise RegistryError(f"{where}: '{h.host}' needs a 'hostname' (IP or DNS name)")
-    if h.is_pattern and (h.hostname or h.svc):
-        raise RegistryError(f"{where}: pattern '{h.host}' may only carry defaults, not hostname/svc")
-    if not all(isinstance(k, str) and k and "/" not in k for k in h.keys):
-        raise RegistryError(f"{where}: 'keys' are file names under ~/.ssh, e.g. [\"id_ed25519\"]")
-    for k, account in h.svc.items():
-        if not SVC_KEY.match(k) or not isinstance(account, str) or not account:
-            raise RegistryError(f"{where}: svc must map a letter to an account, e.g. {{\"P\": \"svc_x\"}}")
-    for k, v in h.options.items():
-        if not isinstance(v, str) or not re.match(r"^[A-Za-z]+$", k):
-            raise RegistryError(f"{where}: options must be {{\"SshKeyword\": \"value\"}}")
-    return h
+
+def _service_users(raw: list, where: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for su in raw:
+        if not (isinstance(su, dict) and set(su) == {"flag", "user"}
+                and isinstance(su["flag"], str) and FLAG.match(su["flag"])
+                and isinstance(su["user"], str) and su["user"]):
+            raise RegistryError(f'{where}: service_users entries look like {{"flag": "P", "user": "svc_x"}}')
+        if su["flag"] in out:
+            raise RegistryError(f"{where}: service_users flag '{su['flag']}' appears twice")
+        out[su["flag"]] = su["user"]
+    return out
+
+
+def _server(group: dict, raw: dict, module: str, where: str) -> Host:
+    _typecheck(raw, SERVER, where, "server")
+    merged = {k: v for k, v in group.items() if k != "servers"} | raw
+    for req in ("host_name", "host"):
+        if not merged.get(req):
+            raise RegistryError(f"{where}: server needs '{req}'")
+    aliases = merged.get("aliases", [])
+    for n in [merged["host_name"], *aliases]:
+        if not isinstance(n, str) or not NAME.match(n):
+            raise RegistryError(f"{where}: bad host name {n!r} (no spaces or wildcards)")
+    for k, v in merged.get("options", {}).items():
+        if not KEYWORD.match(k) or not isinstance(v, str):
+            raise RegistryError(f'{where}: options look like {{"SshKeyword": "value"}}')
+    return Host(
+        name=merged["host_name"],
+        hostname=merged["host"],
+        module=module,
+        source=where,
+        aliases=list(aliases),
+        port=merged.get("port"),
+        proxy=merged.get("proxy"),
+        forward_agent=merged.get("forward_agent", False),
+        identities_only=merged.get("identities_only", False),
+        service_users=_service_users(merged.get("service_users", []), where),
+        options=dict(merged.get("options", {})),
+        note=merged.get("note"),
+    )
 
 
 def load_dir(directory: Path) -> list[Host]:
@@ -104,15 +128,20 @@ def load_dir(directory: Path) -> list[Host]:
         raise RegistryError(f"no *.jsonl files in {directory}")
     hosts: list[Host] = []
     for path in files:
+        module = path.stem
         for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if not line.strip():
                 continue
             where = f"{path.name}:{n}"
             try:
-                raw = json.loads(line)
+                group = json.loads(line)
             except json.JSONDecodeError as e:
                 raise RegistryError(f"{where}: invalid JSON ({e.msg})") from None
-            hosts.append(_row(raw, where))
+            _typecheck(group, GROUP, where, "group")
+            if not group.get("servers"):
+                raise RegistryError(f"{where}: group has no 'servers'")
+            for i, raw in enumerate(group["servers"], 1):
+                hosts.append(_server(group, raw, module, f"{where} server {i}"))
     _check_set(hosts)
     return hosts
 
@@ -120,7 +149,7 @@ def load_dir(directory: Path) -> list[Host]:
 def _check_set(hosts: list[Host]) -> None:
     seen: dict[str, str] = {}
     for h in hosts:
-        for name in [h.host, *h.aliases, *h.svc_hosts()]:
+        for name in [*h.names, *h.svc_hosts()]:
             if name in seen:
                 raise RegistryError(f"{h.source}: '{name}' is already defined at {seen[name]}")
             seen[name] = h.source
@@ -129,14 +158,17 @@ def _check_set(hosts: list[Host]) -> None:
             raise RegistryError(f"{h.source}: proxy '{h.proxy}' is not a host in the registry")
 
 
-def resolve_me(hosts: list[Host], me: str) -> list[Host]:
-    needs = [h.source for h in hosts if h.user == ME]
-    if needs and not me:
-        raise RegistryError(
-            f'{len(needs)} host(s) use "user": "{ME}" (first: {needs[0]}) but [identity] me is empty.\n'
-            "Set it in ~/.config/ssh_registry/settings.toml:\n\n  [identity]\n  me = \"your.login\""
-        )
+def apply_logins(hosts: list[Host], s: Settings) -> list[Host]:
+    """Fill user and keys from settings.toml; every host must end up with a user."""
+    missing = []
     for h in hosts:
-        if h.user == ME:
-            h.user = me
+        login = s.login_for(h.name, h.module)
+        h.user, h.keys = login.user, login.keys
+        if not h.user:
+            missing.append(h.name)
+    if missing:
+        raise RegistryError(
+            f"no login for {len(missing)} host(s) (first: {missing[0]}): [identity] user is empty.\n"
+            "Set it in ~/.config/ssh_registry/settings.toml:\n\n  [identity]\n  user = \"your.login\""
+        )
     return hosts
