@@ -60,7 +60,7 @@ def _quote(s: str) -> str:
 
 def dump(data: dict[str, dict]) -> str:
     order = ([GLOBAL] if GLOBAL in data else []) + sorted(k for k in data if k != GLOBAL)
-    out = ["# Written by `shellrc config`. Logins and key file names only - never key material.", ""]
+    out = ["# Written by `shellrc config`. Logins and key file paths only - never key material.", ""]
     for section in order:
         values = data[section]
         if not values:

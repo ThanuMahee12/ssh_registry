@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import creds as creds_mod
+from . import menu
 from . import settings as settings_mod
 from .hosts import Host, RegistryError, apply_logins, load_dir
 from .render import render
@@ -158,7 +159,12 @@ def cmd_config(args, s) -> int:
     section = creds_mod.GLOBAL if args.glob else args.module
     if section is None and (args.user is not None or args.key is not None or args.unset):
         raise RegistryError("say where: --global (every host) or --module <name>")
-    if section is None:  # show
+    if section is None and menu.interactive():
+        if not any(s.cache_dir.glob("*.jsonl")):
+            sync(s)
+        modules = sorted(p.stem for p in s.cache_dir.glob("*.jsonl"))
+        return menu.run(s, modules, settings_mod.load)
+    if section is None:  # show (piped / scripted)
         if not s.cred_file.is_file():
             print(f"{s.cred_file}: not set yet. Start with:\n  shellrc config --global --user your.login --key ~/.ssh/id_ed25519")
             return 0
@@ -206,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
     common(c)
     c.set_defaults(fn=cmd_check)
 
-    cf = sub.add_parser("config", help="set your login and key (~/.shellrc/cred.toml); no flags = show")
+    cf = sub.add_parser("config", help="your login and key (~/.shellrc/cred.toml); no flags = interactive menu")
     where = cf.add_mutually_exclusive_group()
     where.add_argument("--global", dest="glob", action="store_true", help="for every host")
     where.add_argument("--module", help="for one module, e.g. cw_alchmy")
