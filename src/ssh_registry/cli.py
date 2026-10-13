@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,8 @@ from . import menu
 from . import settings as settings_mod
 from .hosts import Host, RegistryError, apply_logins, load_dir
 from .render import render
+
+MODULE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def warn(msg: str) -> None:
@@ -186,6 +189,49 @@ def cmd_config(args, s) -> int:
     return 0
 
 
+def cmd_host_create(args, s) -> int:
+    """Create <module>.jsonl in S3: empty, or uploaded from a local file.
+
+    The upload is conditional (If-None-Match), so an existing module is never
+    overwritten, even by a concurrent creator.
+    """
+    name = args.name
+    if not MODULE.match(name):
+        raise RegistryError(f"bad module name {name!r}: use letters, digits, '_' or '-'")
+    if not shutil.which("aws"):
+        raise RegistryError("aws CLI not found; cannot reach S3")
+    body = Path(args.file).expanduser().read_bytes() if args.file else b""
+    # Validation needs every other module, so the cache must be current.
+    if not sync(s):
+        raise RegistryError("cannot refresh the registry from S3; nothing created")
+    if (s.cache_dir / f"{name}.jsonl").exists():
+        raise RegistryError(f"module '{name}' already exists in the registry")
+    key = f"{s.prefix.strip('/')}/{name}.jsonl"
+    uri = f"s3://{s.bucket}/{key}"
+    with tempfile.TemporaryDirectory() as tmp:
+        for f in s.cache_dir.glob("*.jsonl"):
+            shutil.copy2(f, tmp)
+        new = Path(tmp) / f"{name}.jsonl"
+        new.write_bytes(body)
+        # Validates the new module against all the others (duplicate names, proxies).
+        servers = sum(1 for h in load_dir(Path(tmp)) if h.module == name)
+        if args.dry_run:
+            print(f"would create {uri} with {servers} server(s)")
+            return 0
+        r = subprocess.run(
+            ["aws", "s3api", "put-object", "--region", s.region, "--bucket", s.bucket,
+             "--key", key, "--body", str(new), "--if-none-match", "*"],
+            capture_output=True, text=True,
+        )
+    if r.returncode != 0:
+        if "PreconditionFailed" in r.stderr or "412" in r.stderr:
+            raise RegistryError(f"{uri} already exists in S3; nothing uploaded")
+        raise RegistryError(f"upload to {uri} failed: {r.stderr.strip() or r.returncode}")
+    sync(s)
+    print(f"created {uri} with {servers} server(s)")
+    return 0
+
+
 def cmd_list(args, s) -> int:
     hosts, _ = load_hosts(args, s)
     for h in hosts:
@@ -227,6 +273,14 @@ def main(argv: list[str] | None = None) -> int:
     ls = sub.add_parser("list", help="module, name, host, aliases, proxy, service flags (tab-separated)")
     common(ls)
     ls.set_defaults(fn=cmd_list)
+
+    ho = sub.add_parser("host", help="manage host modules in S3")
+    hsub = ho.add_subparsers(dest="host_cmd", required=True)
+    hc = hsub.add_parser("create", help="create a module in S3: empty, or uploaded from a JSONL file")
+    hc.add_argument("name", help="module name, e.g. cw_cwiq_pipe (becomes <name>.jsonl)")
+    hc.add_argument("file", nargs="?", help="JSONL file to upload; omit to create an empty module")
+    hc.add_argument("--dry-run", action="store_true", help="validate and show what would be created")
+    hc.set_defaults(fn=cmd_host_create)
 
     args = p.parse_args(argv)
     try:
