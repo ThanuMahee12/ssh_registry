@@ -1,0 +1,36 @@
+# =============================================================================
+# FINAL SSH CONFIG - machine: bench-dev
+#
+# Include lines ONLY. Every host definition is shared, in ../../shared/.
+# ~/.ssh/config includes this file (written by install.sh / install.ps1).
+#
+# ORDER IS PRECEDENCE. OpenSSH takes the FIRST value it sees for each keyword,
+# so an earlier Include beats a later one. That is why local overrides come
+# first and the Host * defaults come last. Putting an override at the bottom
+# silently does nothing - verified, not folklore.
+#
+# Missing Include targets and globs matching nothing are ignored without error,
+# so the local override file is genuinely optional.
+#
+# To add a host: edit the matching file under ssh/shared/, never this one.
+# =============================================================================
+
+# 1. Per-device overrides. Git-ignored, optional, wins over everything below.
+Include ~/shellrc/ssh/local/*.config
+
+# 2. WHO YOU ARE. One glob, so a person directory can hold any number of files
+#    and switching people is this ONE line - point it at ssh/shared/<name>/.
+Include ~/shellrc/ssh/shared/thanujan/*.config
+
+# 3. Work hosts. Explicit and ORDERED on purpose, not a glob: global.config
+#    must come last, and a glob would sort it 5th of 8.
+Include ~/shellrc/ssh/shared/work/proxy.config
+Include ~/shellrc/ssh/shared/work/bench.config
+Include ~/shellrc/ssh/shared/work/alchemy.config
+Include ~/shellrc/ssh/shared/work/cwiq-pipe.config
+Include ~/shellrc/ssh/shared/work/sli.config
+Include ~/shellrc/ssh/shared/work/misc.config
+Include ~/shellrc/ssh/shared/work/github.config
+
+# 4. Global defaults LAST, so anything above can override them.
+Include ~/shellrc/ssh/shared/work/global.config
