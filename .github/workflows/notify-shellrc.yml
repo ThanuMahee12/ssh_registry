@@ -1,0 +1,26 @@
+# When main changes, tell shellrc to bump its registry pointer.
+#
+# Needs a repository secret SHELLRC_SYNC_TOKEN: a fine-grained personal access
+# token with Contents: read and write on ThanuMahee12/shellrc. The default
+# GITHUB_TOKEN cannot dispatch to another repository.
+name: notify-shellrc
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch submodule-updated to shellrc
+        env:
+          GH_TOKEN: ${{ secrets.SHELLRC_SYNC_TOKEN }}
+          SHA: ${{ github.sha }}
+        run: |
+          gh api repos/ThanuMahee12/shellrc/dispatches \
+            -f event_type=submodule-updated \
+            -F "client_payload[repo]=ssh_registry" \
+            -F "client_payload[sha]=$SHA"
