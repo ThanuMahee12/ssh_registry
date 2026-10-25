@@ -84,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("generate", help="write cw/personal/shared configs and shellrc.config")
     p.add_argument("--db", required=True)
-    p.add_argument("--dir", default="~/.shellrc", help="output directory (default: ~/.shellrc)")
+    p.add_argument("--dir", default="~", help="output directory (default: your home folder, ~)")
     p.add_argument("--person", default=None,
                    help="generate for one person (their logins win over shared); output in DIR/PERSON/")
     p.set_defaults(func=cmd_generate)
