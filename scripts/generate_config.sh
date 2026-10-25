@@ -3,7 +3,7 @@
 #  Generate the ssh configs from the SQLite host database.
 #
 #  Usage:  scripts/generate_config.sh [--db PATH] [--dir PATH]
-#    --db   the host database   (default: ~/.shellrc/hosts.sqlite)
+#    --db   the host database   (default: data/hosts.sqlite in this repo)
 #    --dir  the output directory (default: ~/.shellrc)
 #
 #  Writes cw.config, personal.config, shared.config and shellrc.config.
@@ -19,7 +19,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DB="$HOME/.shellrc/hosts.sqlite"
+DB="$REPO/data/hosts.sqlite"
 DIR="$HOME/.shellrc"
 
 while [[ $# -gt 0 ]]; do

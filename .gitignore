@@ -8,3 +8,5 @@ __pycache__/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+# The managed host database stays local; it is generated from the source files.
+data/
