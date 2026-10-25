@@ -1,7 +1,7 @@
 """ssh-registry command line.
 
     ssh-registry convert  --db DB [SHARED_DIR]   one-time: source files -> database
-    ssh-registry generate --db DB --out FILE     write the single ssh config
+    ssh-registry generate --db DB [--dir DIR]    write cw/personal/shared configs and shellrc.config
     ssh-registry list     --db DB                one line per host
     ssh-registry check    --db DB                integrity and foreign-key checks
 """
@@ -40,13 +40,11 @@ def cmd_convert(args) -> int:
 def cmd_generate(args) -> int:
     conn = db.connect(args.db)
     try:
-        text = render.render(conn)
+        written = render.write_all(conn, Path(args.dir).expanduser())
     finally:
         conn.close()
-    out = Path(args.out).expanduser()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(text, encoding="utf-8", newline="\n")
-    print(f"wrote {out}")
+    for path in written:
+        print(f"wrote {path}")
     return 0
 
 
@@ -84,9 +82,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("shared", nargs="?", default="ssh/shared")
     p.set_defaults(func=cmd_convert)
 
-    p = sub.add_parser("generate", help="write the single ssh config from the database")
+    p = sub.add_parser("generate", help="write cw/personal/shared configs and shellrc.config")
     p.add_argument("--db", required=True)
-    p.add_argument("--out", required=True)
+    p.add_argument("--dir", default="~/.shellrc", help="output directory (default: ~/.shellrc)")
     p.set_defaults(func=cmd_generate)
 
     p = sub.add_parser("list", help="one line per host")

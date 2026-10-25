@@ -71,6 +71,31 @@ class GeneratedMatchesSource(unittest.TestCase):
         self.assertNotIn("Include", self.generated.read_text(encoding="utf-8"))
 
 
+class UsageFiles(unittest.TestCase):
+    def test_write_all_splits_by_usage_and_includes_in_order(self):
+        import sqlite3
+        tmp = Path(tempfile.mkdtemp(prefix="ssh-registry-usage-"))
+        try:
+            conn = db.connect(tmp / "u.sqlite")
+            try:
+                convert.convert(conn, cli.source_files(SHARED))
+                render.write_all(conn, tmp / "out")
+                cw = (tmp / "out" / "cw.config").read_text(encoding="utf-8")
+                personal = (tmp / "out" / "personal.config").read_text(encoding="utf-8")
+                shared = (tmp / "out" / "shared.config").read_text(encoding="utf-8")
+                shellrc = (tmp / "out" / "shellrc.config").read_text(encoding="utf-8")
+            finally:
+                conn.close()
+            self.assertIn("Host github.com\n", personal)
+            self.assertNotIn("Host github.com\n", cw)
+            self.assertIn("Host sf_jump\n", cw)
+            self.assertEqual(shared.count("Host *"), 1)
+            includes = [l.split()[1] for l in shellrc.splitlines() if l.startswith("Include ")]
+            self.assertEqual(includes, ["~/.shellrc/cw.config", "~/.shellrc/personal.config", "~/.shellrc/shared.config"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class SchemaRules(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="ssh-registry-schema-"))
