@@ -104,24 +104,18 @@ class LoginKinds(unittest.TestCase):
         self.assertEqual(classify_login("git"), "system")
         self.assertEqual(classify_login("ec2-user"), "personal")
 
-    def test_v1_database_migrates_and_reclassifies(self):
+    def test_old_schema_is_refused_with_rebuild_hint(self):
         import sqlite3
         tmp = Path(tempfile.mkdtemp(prefix="ssh-registry-v1-"))
         try:
-            v1 = tmp / "v1.sqlite"
-            c = sqlite3.connect(v1)
-            c.executescript((ROOT / "src" / "ssh_registry" / "schema.sql").read_text(encoding="utf-8"))
-            c.execute("INSERT INTO login (user) VALUES ('svc_dat_alchemy'), ('git'), ('bthanujan.mahendran')")
+            old = tmp / "v1.sqlite"
+            c = sqlite3.connect(old)
+            c.execute("PRAGMA user_version = 1")
             c.commit()
             c.close()
-            conn = db.connect(v1)
-            try:
-                kinds = dict(conn.execute("SELECT user, kind FROM login").fetchall())
-                version = conn.execute("PRAGMA user_version").fetchone()[0]
-            finally:
-                conn.close()
-            self.assertEqual(version, 2)
-            self.assertEqual(kinds, {"svc_dat_alchemy": "service", "git": "system", "bthanujan.mahendran": "personal"})
+            with self.assertRaises(RuntimeError) as ctx:
+                db.connect(old).close()
+            self.assertIn("convert", str(ctx.exception))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
