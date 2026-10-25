@@ -124,7 +124,7 @@ class Converter:
         else:
             kind = KIND_BY_NAME.get(name) or ("github" if "github" in stem else "gitlab" if "gitlab" in stem else "on-prem")
             personal = path.parent.name == "thanujan" and path.name != PERSON_FILE
-            usage = "personal" if personal else "work"
+            usage = "personal" if personal else "cw"
         host_id = self.host(name, kind, usage)
         for key, value in block.pairs:
             canon = sshconf.canonical_key(key)
