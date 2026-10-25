@@ -6,6 +6,84 @@ with `convert`.
 
 Foreign keys are on for every connection. Journal mode is WAL while open.
 
+## Entity relationship diagram
+
+```mermaid
+erDiagram
+    LOGIN ||--o{ HOST_LOGIN : "used by"
+    HOST ||--o{ HOST_LOGIN : "reached by"
+    PERSON ||--o{ HOST_LOGIN : "default for"
+    LOGIN |o--o{ PERSON : "is the login of"
+    HOST ||--o{ HOST_NAME : "selected by"
+    HOST ||--o{ HOST_KEY : "offers"
+    HOST ||--o{ HOST_OPTION : "has"
+    HOST |o--o{ HOST : "ProxyJump"
+
+    LOGIN {
+        int id PK
+        text user UK
+        text kind "personal | service | system"
+    }
+    HOST {
+        int id PK
+        text name UK
+        text kind "on-prem | proxy | github | gitlab | default | EC2"
+        text usage "cw | personal | shared"
+        text hostname
+        int port
+        int proxy_id FK
+        int forward_agent
+        int identities_only
+        int sort_order
+    }
+    HOST_NAME {
+        text pattern PK
+        int host_id FK
+    }
+    HOST_KEY {
+        int host_id PK, FK
+        int seq PK
+        text path
+    }
+    HOST_OPTION {
+        int host_id PK, FK
+        text key PK
+        int seq PK
+        text value
+    }
+    PERSON {
+        int id PK
+        text name UK
+        int login_id FK
+    }
+    HOST_LOGIN {
+        int id PK
+        int host_id FK
+        int login_id FK
+        text role "default | direct | sudo"
+        text flag "P | U, sudo only"
+        int person_id FK "default rows only; NULL = shared"
+    }
+    CHANGE_LOG {
+        int id PK
+        text at
+        text who
+        text action
+        text table_name
+        int row_id
+        text detail
+    }
+    META {
+        text key PK
+        text value
+    }
+```
+
+How to read it:
+- `HOST_LOGIN` is the link that gives a host its logins. A `default` row with no person is the shared login; one with a person is that person's login and wins over the shared one.
+- `HOST |o--o{ HOST` is `ProxyJump`: a host may name one proxy host.
+- `CHANGE_LOG` and `META` have no foreign keys. Nothing writes to `CHANGE_LOG` yet, and `META` is not used.
+
 ## Tables
 
 ### `login`
