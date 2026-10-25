@@ -19,6 +19,16 @@ PERSON_FILE = "identity.config"
 SVC = re.compile(r"^(?P<group>.+)_svc(?P<flag>[PU])$")
 SUDO = re.compile(r"^sudo\s+su\s+-\s+(?P<user>\S+)$")
 KIND_BY_NAME = {"sf_jump": "proxy", "*": "default"}
+SYSTEM_LOGINS = {"git", "bench", "ec2-user"}
+
+
+def classify_login(user: str) -> str:
+    """personal: a person's login. service: svc_* (the only valid sudo target). system: shared logins."""
+    if user.startswith("svc_"):
+        return "service"
+    if user in SYSTEM_LOGINS:
+        return "system"
+    return "personal"
 
 
 class Converter:
@@ -31,7 +41,8 @@ class Converter:
     # --- small helpers -----------------------------------------------------
 
     def login_id(self, user: str) -> int:
-        self.conn.execute("INSERT OR IGNORE INTO login (user) VALUES (?)", (user,))
+        self.conn.execute("INSERT OR IGNORE INTO login (user, kind) VALUES (?, ?)",
+                          (user, classify_login(user)))
         return self.conn.execute("SELECT id FROM login WHERE user = ?", (user,)).fetchone()[0]
 
     def host(self, name: str, kind: str, usage: str) -> int:
@@ -160,6 +171,8 @@ class Converter:
             row = self.conn.execute("SELECT id FROM host WHERE name = ?", (group,)).fetchone()
             if row is None:
                 raise ValueError(f"account {group}_svc{flag}: group host {group} is not defined")
+            if classify_login(user) != "service":
+                raise ValueError(f"account {group}_svc{flag}: {user} is not a service login")
             self.conn.execute(
                 "INSERT OR REPLACE INTO account (host_id, flag, login_id) VALUES (?, ?, ?)",
                 (row[0], flag, self.login_id(user)),
