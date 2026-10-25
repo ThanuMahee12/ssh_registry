@@ -1,7 +1,7 @@
 -- Schema v2: each login has a kind.
 --   personal: a person's own login (bthanujan.mahendran)
 --   service:  a service account, the only kind allowed as a sudo target (svc_*)
---   system:   a shared or system login (git, bench, ec2-user)
+--   system:   a shared or system login (git, bench)
 -- The migration classifies existing rows with the same rules as
 -- convert.classify_login(): svc_* is service, git/bench is system,
 -- everything else (including ec2-user) is personal.
