@@ -3,6 +3,9 @@
 Output is one file per usage (cw, personal, shared) plus shellrc.config, which
 includes them in order. `shared` holds the Host * defaults and is included last,
 so it stays last for ssh (first value wins, defaults come last).
+
+With a person, the login for each host is that person's own default if they have
+one, otherwise the shared default. Output then goes to <dir>/<person>/.
 """
 
 import sqlite3
@@ -50,22 +53,33 @@ def _account_blocks(conn: sqlite3.Connection, host) -> list[str]:
     return out
 
 
-def render(conn: sqlite3.Connection, usage: str | None = None) -> str:
-    """The config text for one usage, or for every host when usage is None."""
+def render(conn: sqlite3.Connection, usage: str | None = None, person: str | None = None) -> str:
+    """The config text for one usage (or every host), for one person (or shared logins only)."""
     if usage is not None and usage not in USAGES:
         raise ValueError(f"unknown usage {usage!r}; expected one of {USAGES}")
-    where = "WHERE h.usage = ?" if usage else ""
-    args = (usage,) if usage else ()
+    person_id = None
+    if person is not None:
+        row = conn.execute("SELECT id FROM person WHERE name = ?", (person,)).fetchone()
+        if row is None:
+            raise ValueError(f"no person named {person!r}")
+        person_id = row["id"]
+    where = "WHERE h.usage = :usage" if usage else ""
     lines = [HEADER, ""]
     hosts = conn.execute(
         f"""SELECT h.id, h.name, h.hostname, h.port, h.forward_agent, h.identities_only,
                    l.user AS login, p.name AS proxy
             FROM host h
-            LEFT JOIN host_login hl ON hl.host_id = h.id AND hl.role = 'default'
-            LEFT JOIN login l ON l.id = hl.login_id
+            LEFT JOIN login l ON l.id = (
+                SELECT login_id FROM host_login
+                WHERE host_id = h.id AND role = 'default'
+                  AND (person_id = :pid OR person_id IS NULL)
+                ORDER BY person_id IS NULL, person_id
+                LIMIT 1)
             LEFT JOIN host p ON p.id = h.proxy_id
             {where}
-            ORDER BY h.sort_order, h.id""", args).fetchall()
+            ORDER BY h.sort_order, h.id""",
+        {"usage": usage, "pid": person_id},
+    ).fetchall()
     for host in hosts:
         lines += _host_block(conn, host)
         lines += _account_blocks(conn, host)
@@ -80,15 +94,17 @@ def shellrc_include(prefix: str = INCLUDE_PREFIX) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_all(conn: sqlite3.Connection, directory: Path) -> list[Path]:
-    """Write cw.config, personal.config, shared.config and shellrc.config into directory."""
-    directory.mkdir(parents=True, exist_ok=True)
+def write_all(conn: sqlite3.Connection, directory: Path, person: str | None = None) -> list[Path]:
+    """Write the usage configs and shellrc.config. With a person, into directory/<person>/."""
+    target = directory / person if person else directory
+    target.mkdir(parents=True, exist_ok=True)
+    prefix = f"{INCLUDE_PREFIX}/{person}" if person else INCLUDE_PREFIX
     written = []
     for usage in USAGES:
-        path = directory / f"{usage}.config"
-        path.write_text(render(conn, usage), encoding="utf-8", newline="\n")
+        path = target / f"{usage}.config"
+        path.write_text(render(conn, usage, person), encoding="utf-8", newline="\n")
         written.append(path)
-    path = directory / "shellrc.config"
-    path.write_text(shellrc_include(), encoding="utf-8", newline="\n")
+    path = target / "shellrc.config"
+    path.write_text(shellrc_include(prefix), encoding="utf-8", newline="\n")
     written.append(path)
     return written

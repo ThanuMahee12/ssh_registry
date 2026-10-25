@@ -40,7 +40,7 @@ def cmd_convert(args) -> int:
 def cmd_generate(args) -> int:
     conn = db.connect(args.db)
     try:
-        written = render.write_all(conn, Path(args.dir).expanduser())
+        written = render.write_all(conn, Path(args.dir).expanduser(), args.person)
     finally:
         conn.close()
     for path in written:
@@ -85,6 +85,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("generate", help="write cw/personal/shared configs and shellrc.config")
     p.add_argument("--db", required=True)
     p.add_argument("--dir", default="~/.shellrc", help="output directory (default: ~/.shellrc)")
+    p.add_argument("--person", default=None,
+                   help="generate for one person (their logins win over shared); output in DIR/PERSON/")
     p.set_defaults(func=cmd_generate)
 
     p = sub.add_parser("list", help="one line per host")

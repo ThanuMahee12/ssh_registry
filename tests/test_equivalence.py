@@ -49,7 +49,7 @@ class GeneratedMatchesSource(unittest.TestCase):
         try:
             convert.convert(conn, self.files)
             self.generated = self.tmp / "ssh_registry.config"
-            self.generated.write_text(render.render(conn), encoding="utf-8")
+            self.generated.write_text(render.render(conn, person="thanujan"), encoding="utf-8")
         finally:
             conn.close()
         self.original = self.tmp / "original.config"
@@ -134,6 +134,20 @@ class SchemaRules(unittest.TestCase):
         with self.assertRaises(sqlite3.IntegrityError):
             with self.conn:
                 self.conn.execute("INSERT INTO host (name, kind, sort_order) VALUES ('x', 'bogus', 1)")
+
+    def test_person_default_wins_over_shared(self):
+        import sqlite3
+        self.conn.execute("INSERT INTO host (name, kind, sort_order) VALUES ('h', 'on-prem', 1)")
+        self.conn.execute("INSERT INTO login (user, kind) VALUES ('shared.user', 'system'), ('me.user', 'personal')")
+        self.conn.execute("INSERT INTO person (name, login_id) VALUES ('me', 2)")
+        self.conn.execute("INSERT INTO host_login (host_id, login_id, role) VALUES (1, 1, 'default')")
+        self.conn.execute("INSERT INTO host_login (host_id, login_id, role, person_id) VALUES (1, 2, 'default', 1)")
+        self.conn.commit()
+        self.assertIn("User me.user", render.render(self.conn, person="me"))
+        self.assertIn("User shared.user", render.render(self.conn))
+        with self.assertRaises(sqlite3.IntegrityError):
+            with self.conn:
+                self.conn.execute("INSERT INTO host_login (host_id, login_id, role, person_id) VALUES (1, 1, 'default', 1)")
 
     def test_one_default_login_per_host(self):
         import sqlite3
