@@ -5,8 +5,3 @@ __pycache__/
 # host data lives in S3, never in git
 *.jsonl
 !tests/fixtures/*.jsonl
-*.sqlite
-*.sqlite-wal
-*.sqlite-shm
-# The managed host database stays local; it is generated from the source files.
-data/
