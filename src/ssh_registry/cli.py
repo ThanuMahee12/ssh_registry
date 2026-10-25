@@ -10,7 +10,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import __version__, convert, db, render
+from . import __version__, convert, db, edit, render
 
 # Order a machine reads the source files: the person layer first, the work hosts
 # in their explicit order, and the Host * defaults last.
@@ -96,6 +96,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("check", help="integrity and foreign-key checks")
     p.add_argument("--db", required=True)
     p.set_defaults(func=cmd_check)
+
+    edit.register(sub)
     return parser
 
 

@@ -61,6 +61,35 @@ that person's own default if they have one, otherwise the shared default. Withou
 every literal host in the combined result with `ssh -G`, and only then moves the
 files into place. A bad database leaves the existing files untouched.
 
+## Editing
+
+The database can be edited directly with these commands. Each change is one
+transaction, is checked against the schema's rules, and writes a row to
+`change_log` with who made it (`--who`, default: the login user).
+
+```
+python -m ssh_registry.cli host add NAME --kind on-prem --usage cw --hostname 10.0.0.5 --proxy sf_jump --key ~/.ssh/id_ed25519
+python -m ssh_registry.cli host update NAME --port 2222 --proxy none --forward-agent yes
+python -m ssh_registry.cli host remove NAME                 # refused while it is a proxy
+python -m ssh_registry.cli host key-add NAME PATH
+python -m ssh_registry.cli host key-remove NAME PATH
+python -m ssh_registry.cli login add USER [--kind personal|service|system]
+python -m ssh_registry.cli login remove USER                # refused while in use
+python -m ssh_registry.cli link set HOST USER --role default [--person NAME]
+python -m ssh_registry.cli link set HOST SVC --role sudo --flag P    # service logins only
+python -m ssh_registry.cli link set HOST USER --role direct
+python -m ssh_registry.cli link remove HOST --role default [--person NAME]
+python -m ssh_registry.cli person add NAME --login USER
+python -m ssh_registry.cli person remove NAME
+```
+
+`host update` changes the kind, usage, hostname, port, proxy (or `none`) and the
+`forward_agent` and `identities_only` flags. A host's kind and usage are checked
+against the allowed values, and a proxy cannot be the host itself.
+
+Edits are made to the database. The source files in `ssh/shared/` are not updated
+by these commands, so a fresh `convert` would bring the old values back.
+
 ## Database
 
 The database is the source of truth; the ssh config is always generated from it,
@@ -91,8 +120,7 @@ the sources instead of using `Include`. The result is the same.
 
 ## Not done yet
 
-- **Edit commands:** there is no `add`, `update` or `remove` for hosts, logins or persons. Edits are made by changing the source files and running `convert`.
-- **Change log:** the `change_log` table exists but nothing writes to it.
+- **Change log for the source files:** the edit commands log their changes; `convert` does not, and the source files have no history of their own.
 - **Direct logins:** the `direct` role exists in the schema, but `convert` doesn't create any.
 - **Second person:** only `thanujan` is in the source data. Other people's hosts and logins need adding.
 - **Wiring on machines:** `~/.ssh/config` must include `~/.shellrc/shellrc.config` on each machine. That's a manual step; see shellrc's setup guide.

@@ -77,7 +77,7 @@ def render(conn: sqlite3.Connection, usage: str | None = None, person: str | Non
                 LIMIT 1)
             LEFT JOIN host p ON p.id = h.proxy_id
             {where}
-            ORDER BY h.sort_order, h.id""",
+            ORDER BY h.kind = 'default', h.sort_order, h.id""",
         {"usage": usage, "pid": person_id},
     ).fetchall()
     for host in hosts:
