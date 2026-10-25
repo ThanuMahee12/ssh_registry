@@ -96,6 +96,36 @@ class UsageFiles(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class LoginKinds(unittest.TestCase):
+    def test_classification(self):
+        from ssh_registry.convert import classify_login
+        self.assertEqual(classify_login("bthanujan.mahendran"), "personal")
+        self.assertEqual(classify_login("svc_dat_alchemy"), "service")
+        self.assertEqual(classify_login("git"), "system")
+        self.assertEqual(classify_login("ec2-user"), "personal")
+
+    def test_v1_database_migrates_and_reclassifies(self):
+        import sqlite3
+        tmp = Path(tempfile.mkdtemp(prefix="ssh-registry-v1-"))
+        try:
+            v1 = tmp / "v1.sqlite"
+            c = sqlite3.connect(v1)
+            c.executescript((ROOT / "src" / "ssh_registry" / "schema.sql").read_text(encoding="utf-8"))
+            c.execute("INSERT INTO login (user) VALUES ('svc_dat_alchemy'), ('git'), ('bthanujan.mahendran')")
+            c.commit()
+            c.close()
+            conn = db.connect(v1)
+            try:
+                kinds = dict(conn.execute("SELECT user, kind FROM login").fetchall())
+                version = conn.execute("PRAGMA user_version").fetchone()[0]
+            finally:
+                conn.close()
+            self.assertEqual(version, 2)
+            self.assertEqual(kinds, {"svc_dat_alchemy": "service", "git": "system", "bthanujan.mahendran": "personal"})
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class SchemaRules(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="ssh-registry-schema-"))
@@ -112,7 +142,7 @@ class SchemaRules(unittest.TestCase):
                 self.conn.execute("INSERT INTO host (name, kind, sort_order) VALUES ('x', 'bogus', 1)")
 
     def test_schema_version(self):
-        self.assertEqual(self.conn.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertEqual(self.conn.execute("PRAGMA user_version").fetchone()[0], 2)
 
 
 if __name__ == "__main__":
