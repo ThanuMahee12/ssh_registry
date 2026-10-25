@@ -37,6 +37,7 @@ class Converter:
         self.order = 0
         self.proxies: dict[str, str] = {}
         self.accounts: list[tuple[str, str, str]] = []
+        self.current_person: int | None = None
 
     # --- small helpers -----------------------------------------------------
 
@@ -44,6 +45,14 @@ class Converter:
         self.conn.execute("INSERT OR IGNORE INTO login (user, kind) VALUES (?, ?)",
                           (user, classify_login(user)))
         return self.conn.execute("SELECT id FROM login WHERE user = ?", (user,)).fetchone()[0]
+
+    def person(self, name: str, login: str) -> int:
+        self.conn.execute(
+            "INSERT INTO person (name, login_id) VALUES (?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET login_id = excluded.login_id",
+            (name, self.login_id(login)),
+        )
+        return self.conn.execute("SELECT id FROM person WHERE name = ?", (name,)).fetchone()[0]
 
     def host(self, name: str, kind: str, usage: str) -> int:
         row = self.conn.execute("SELECT id FROM host WHERE name = ?", (name,)).fetchone()
@@ -98,6 +107,9 @@ class Converter:
             )
             if not person_login:
                 raise ValueError(f"{path}: person file has no User line")
+        self.current_person = None
+        if person_login is not None:
+            self.current_person = self.person(path.parent.name, person_login)
         for block in blocks:
             self.convert_block(path, block, person_login)
 
@@ -142,11 +154,11 @@ class Converter:
             if canon == "HostName":
                 self.set_once(host_id, "hostname", value)
             elif canon == "User":
-                login = person_login if person_login is not None else value
-                # first User wins: a second default for the same host is ignored
+                # first User wins per person (or per shared default): a repeat is ignored
                 self.conn.execute(
-                    "INSERT OR IGNORE INTO host_login (host_id, login_id, role) VALUES (?, ?, 'default')",
-                    (host_id, self.login_id(login)),
+                    "INSERT OR IGNORE INTO host_login (host_id, login_id, role, person_id) "
+                    "VALUES (?, ?, 'default', ?)",
+                    (host_id, self.login_id(value), self.current_person),
                 )
             elif canon == "ProxyJump":
                 self.proxies.setdefault(name, value)

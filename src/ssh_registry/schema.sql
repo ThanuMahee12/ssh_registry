@@ -50,20 +50,32 @@ CREATE TABLE host_key (
   PRIMARY KEY (host_id, seq)
 );
 
--- Which logins a host is reached with, and how.
---   default: the login ssh uses. At most one per host.
---   direct:  another login that works directly.
---   sudo:    an account reached with `sudo su -`, selected by flag P or U.
---            Only service logins are allowed here (enforced by the converter).
-CREATE TABLE host_login (
-  host_id  INTEGER NOT NULL REFERENCES host (id) ON DELETE CASCADE,
-  login_id INTEGER NOT NULL REFERENCES login (id) ON DELETE RESTRICT,
-  role     TEXT NOT NULL CHECK (role IN ('default', 'direct', 'sudo')),
-  flag     TEXT CHECK (flag IS NULL OR flag IN ('P', 'U')),
-  PRIMARY KEY (host_id, login_id, role),
-  CHECK ((role = 'sudo') = (flag IS NOT NULL))
+-- A person: someone whose personal login is used on the hosts they reach.
+CREATE TABLE person (
+  id       INTEGER PRIMARY KEY,
+  name     TEXT NOT NULL UNIQUE CHECK (name <> ''),
+  login_id INTEGER NOT NULL REFERENCES login (id) ON DELETE RESTRICT
 );
-CREATE UNIQUE INDEX one_default_login ON host_login (host_id) WHERE role = 'default';
+
+-- Which logins a host is reached with, and how.
+--   default: the login ssh uses. person_id NULL = shared, for everyone;
+--            person_id set = that person's login, which wins over shared.
+--   direct:  another login that works directly.
+--   sudo:    an account reached with `sudo su -`, flag P or U. Service logins only.
+CREATE TABLE host_login (
+  id        INTEGER PRIMARY KEY,
+  host_id   INTEGER NOT NULL REFERENCES host (id) ON DELETE CASCADE,
+  login_id  INTEGER NOT NULL REFERENCES login (id) ON DELETE RESTRICT,
+  role      TEXT NOT NULL CHECK (role IN ('default', 'direct', 'sudo')),
+  flag      TEXT CHECK (flag IS NULL OR flag IN ('P', 'U')),
+  person_id INTEGER REFERENCES person (id) ON DELETE CASCADE,
+  CHECK ((role = 'sudo') = (flag IS NOT NULL)),
+  CHECK (person_id IS NULL OR role = 'default')
+);
+CREATE UNIQUE INDEX one_shared_default ON host_login (host_id)
+  WHERE role = 'default' AND person_id IS NULL;
+CREATE UNIQUE INDEX one_person_default ON host_login (host_id, person_id)
+  WHERE role = 'default' AND person_id IS NOT NULL;
 CREATE UNIQUE INDEX one_sudo_flag ON host_login (host_id, flag) WHERE role = 'sudo';
 CREATE INDEX idx_host_login_login ON host_login (login_id);
 
@@ -92,7 +104,7 @@ CREATE VIEW v_host AS
 SELECT h.id, h.name, h.kind, h.usage, h.hostname, h.port,
        l.user AS login, p.name AS proxy, h.forward_agent, h.identities_only
 FROM host h
-LEFT JOIN host_login hl ON hl.host_id = h.id AND hl.role = 'default'
+LEFT JOIN host_login hl ON hl.host_id = h.id AND hl.role = 'default' AND hl.person_id IS NULL
 LEFT JOIN login l ON l.id = hl.login_id
 LEFT JOIN host p ON p.id = h.proxy_id;
 
