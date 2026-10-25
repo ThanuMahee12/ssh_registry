@@ -40,8 +40,8 @@ def _host_block(conn: sqlite3.Connection, host) -> list[str]:
 def _account_blocks(conn: sqlite3.Connection, host) -> list[str]:
     out: list[str] = []
     for flag, user in conn.execute(
-            """SELECT a.flag, l.user FROM account a JOIN login l ON l.id = a.login_id
-               WHERE a.host_id = ? ORDER BY a.flag""", (host["id"],)):
+            """SELECT hl.flag, l.user FROM host_login hl JOIN login l ON l.id = hl.login_id
+               WHERE hl.host_id = ? AND hl.role = 'sudo' ORDER BY hl.flag""", (host["id"],)):
         out += [
             f"Host {host['name']}_svc{flag}",
             "  RequestTTY yes",
@@ -61,7 +61,8 @@ def render(conn: sqlite3.Connection, usage: str | None = None) -> str:
         f"""SELECT h.id, h.name, h.hostname, h.port, h.forward_agent, h.identities_only,
                    l.user AS login, p.name AS proxy
             FROM host h
-            LEFT JOIN login l ON l.id = h.login_id
+            LEFT JOIN host_login hl ON hl.host_id = h.id AND hl.role = 'default'
+            LEFT JOIN login l ON l.id = hl.login_id
             LEFT JOIN host p ON p.id = h.proxy_id
             {where}
             ORDER BY h.sort_order, h.id""", args).fetchall()

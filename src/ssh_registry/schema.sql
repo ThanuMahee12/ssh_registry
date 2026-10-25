@@ -27,7 +27,6 @@ CREATE TABLE host (
   usage           TEXT NOT NULL DEFAULT 'cw' CHECK (usage IN ('cw','personal','shared')),
   hostname        TEXT CHECK (hostname IS NULL OR hostname <> ''),
   port            INTEGER CHECK (port IS NULL OR port BETWEEN 1 AND 65535),
-  login_id        INTEGER REFERENCES login (id) ON DELETE RESTRICT,
   proxy_id        INTEGER REFERENCES host (id) ON DELETE RESTRICT,
   forward_agent   INTEGER NOT NULL DEFAULT 0 CHECK (forward_agent IN (0,1)),
   identities_only INTEGER NOT NULL DEFAULT 0 CHECK (identities_only IN (0,1)),
@@ -35,7 +34,6 @@ CREATE TABLE host (
   CHECK (proxy_id IS NULL OR proxy_id <> id)
 );
 CREATE INDEX idx_host_proxy ON host (proxy_id);
-CREATE INDEX idx_host_login ON host (login_id);
 
 -- Extra names that select a host, e.g. alchmy_ny5p01* for alchmy_ny5p01.
 CREATE TABLE host_name (
@@ -52,14 +50,22 @@ CREATE TABLE host_key (
   PRIMARY KEY (host_id, seq)
 );
 
--- Accounts a group host switches to with `sudo su -` (interactive only).
-CREATE TABLE account (
-  id       INTEGER PRIMARY KEY,
+-- Which logins a host is reached with, and how.
+--   default: the login ssh uses. At most one per host.
+--   direct:  another login that works directly.
+--   sudo:    an account reached with `sudo su -`, selected by flag P or U.
+--            Only service logins are allowed here (enforced by the converter).
+CREATE TABLE host_login (
   host_id  INTEGER NOT NULL REFERENCES host (id) ON DELETE CASCADE,
-  flag     TEXT NOT NULL CHECK (flag <> ''),
   login_id INTEGER NOT NULL REFERENCES login (id) ON DELETE RESTRICT,
-  UNIQUE (host_id, flag)
+  role     TEXT NOT NULL CHECK (role IN ('default', 'direct', 'sudo')),
+  flag     TEXT CHECK (flag IS NULL OR flag IN ('P', 'U')),
+  PRIMARY KEY (host_id, login_id, role),
+  CHECK ((role = 'sudo') = (flag IS NOT NULL))
 );
+CREATE UNIQUE INDEX one_default_login ON host_login (host_id) WHERE role = 'default';
+CREATE UNIQUE INDEX one_sudo_flag ON host_login (host_id, flag) WHERE role = 'sudo';
+CREATE INDEX idx_host_login_login ON host_login (login_id);
 
 -- Other ssh keywords that have no column.
 CREATE TABLE host_option (
@@ -86,7 +92,8 @@ CREATE VIEW v_host AS
 SELECT h.id, h.name, h.kind, h.usage, h.hostname, h.port,
        l.user AS login, p.name AS proxy, h.forward_agent, h.identities_only
 FROM host h
-LEFT JOIN login l ON l.id = h.login_id
+LEFT JOIN host_login hl ON hl.host_id = h.id AND hl.role = 'default'
+LEFT JOIN login l ON l.id = hl.login_id
 LEFT JOIN host p ON p.id = h.proxy_id;
 
 PRAGMA user_version = 2;

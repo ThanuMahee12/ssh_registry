@@ -135,6 +135,15 @@ class SchemaRules(unittest.TestCase):
             with self.conn:
                 self.conn.execute("INSERT INTO host (name, kind, sort_order) VALUES ('x', 'bogus', 1)")
 
+    def test_one_default_login_per_host(self):
+        import sqlite3
+        self.conn.execute("INSERT INTO host (name, kind, sort_order) VALUES ('h', 'on-prem', 1)")
+        self.conn.execute("INSERT INTO login (user, kind) VALUES ('a', 'personal'), ('b', 'personal')")
+        self.conn.execute("INSERT INTO host_login (host_id, login_id, role) VALUES (1, 1, 'default')")
+        with self.assertRaises(sqlite3.IntegrityError):
+            with self.conn:
+                self.conn.execute("INSERT INTO host_login (host_id, login_id, role) VALUES (1, 2, 'default')")
+
     def test_schema_version(self):
         self.assertEqual(self.conn.execute("PRAGMA user_version").fetchone()[0], 2)
 

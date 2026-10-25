@@ -142,10 +142,12 @@ class Converter:
             if canon == "HostName":
                 self.set_once(host_id, "hostname", value)
             elif canon == "User":
-                if person_login is not None:
-                    self.set_once(host_id, "login_id", self.login_id(person_login))
-                else:
-                    self.set_once(host_id, "login_id", self.login_id(value))
+                login = person_login if person_login is not None else value
+                # first User wins: a second default for the same host is ignored
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO host_login (host_id, login_id, role) VALUES (?, ?, 'default')",
+                    (host_id, self.login_id(login)),
+                )
             elif canon == "ProxyJump":
                 self.proxies.setdefault(name, value)
             elif canon == "ForwardAgent":
@@ -174,8 +176,8 @@ class Converter:
             if classify_login(user) != "service":
                 raise ValueError(f"account {group}_svc{flag}: {user} is not a service login")
             self.conn.execute(
-                "INSERT OR REPLACE INTO account (host_id, flag, login_id) VALUES (?, ?, ?)",
-                (row[0], flag, self.login_id(user)),
+                "INSERT INTO host_login (host_id, login_id, role, flag) VALUES (?, ?, 'sudo', ?)",
+                (row[0], self.login_id(user), flag),
             )
 
 
