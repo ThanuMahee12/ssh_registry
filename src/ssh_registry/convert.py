@@ -19,7 +19,7 @@ PERSON_FILE = "identity.config"
 SVC = re.compile(r"^(?P<group>.+)_svc(?P<flag>[PU])$")
 SUDO = re.compile(r"^sudo\s+su\s+-\s+(?P<user>\S+)$")
 KIND_BY_NAME = {"sf_jump": "proxy", "*": "default"}
-SYSTEM_LOGINS = {"git", "bench", "ec2-user"}
+SYSTEM_LOGINS = {"git", "bench"}
 
 
 def classify_login(user: str) -> str:

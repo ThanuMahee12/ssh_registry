@@ -102,7 +102,7 @@ class LoginKinds(unittest.TestCase):
         self.assertEqual(classify_login("bthanujan.mahendran"), "personal")
         self.assertEqual(classify_login("svc_dat_alchemy"), "service")
         self.assertEqual(classify_login("git"), "system")
-        self.assertEqual(classify_login("ec2-user"), "system")
+        self.assertEqual(classify_login("ec2-user"), "personal")
 
     def test_v1_database_migrates_and_reclassifies(self):
         import sqlite3
