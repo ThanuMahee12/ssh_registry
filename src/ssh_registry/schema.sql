@@ -1,4 +1,6 @@
--- ssh-registry schema, version 1.
+-- ssh-registry schema, version 2 (the only schema).
+-- The database is built from the source files; there are no migrations. A database
+-- at any other version is rebuilt with `ssh-registry convert`.
 -- The database is the source of truth. The ssh config is generated from it.
 -- Applied once by db.connect(); PRAGMA user_version records the version.
 
@@ -7,10 +9,14 @@ CREATE TABLE meta (
   value TEXT NOT NULL
 );
 
--- Every username, stored once: people, git, ec2-user, service accounts.
+-- Every username, stored once.
+--   personal: a person's own login (bthanujan.mahendran, ec2-user)
+--   service:  a service account, the only kind allowed as a sudo target (svc_*)
+--   system:   a shared login (git, bench)
 CREATE TABLE login (
   id   INTEGER PRIMARY KEY,
-  user TEXT NOT NULL UNIQUE CHECK (user <> '')
+  user TEXT NOT NULL UNIQUE CHECK (user <> ''),
+  kind TEXT NOT NULL DEFAULT 'personal' CHECK (kind IN ('personal', 'service', 'system'))
 );
 
 -- One row per server, git host, or the Host * defaults.
@@ -83,4 +89,4 @@ FROM host h
 LEFT JOIN login l ON l.id = h.login_id
 LEFT JOIN host p ON p.id = h.proxy_id;
 
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
