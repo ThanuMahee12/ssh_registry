@@ -57,15 +57,27 @@ def ask_dir() -> str:
 
 
 def cmd_init(args) -> int:
-    """Create the registry database: from the existing source files, or empty.
+    """Create the registry database: from an existing source (a file, or a Google Sheet), or empty.
 
-    Interactive: 1) existing source, 2) from scratch, or Back to change the path.
+    Interactive menu: 1) existing source -> a) local CSV or JSON file, b) Google Sheet;
+    2) from scratch; Back returns to the previous question.
     """
+    from . import source
+
     interactive = sys.stdin.isatty()
-    db_path, start = args.db, args.start
-    if (db_path is None or start is None) and not interactive:
-        raise SystemExit("init: give --db and --start existing|new; there is no terminal to ask")
-    step = "path" if db_path is None else ("start" if start is None else "done")
+    db_path, start, path = args.db, args.start, args.source
+    if (db_path is None or start is None or (start == "existing" and path is None)) and not interactive:
+        raise SystemExit("init: give --db, --start existing|new and --source FILE; there is no terminal to ask")
+    if start == "existing" and path is None:
+        step = "existing"
+    elif db_path is None:
+        step = "path"
+    elif start is None:
+        step = "start"
+    else:
+        step = "done"
+    if start == "new":
+        step = "done"
     while step != "done":
         if step == "path":
             import questionary
@@ -78,7 +90,7 @@ def cmd_init(args) -> int:
             choice = _ask(lambda: questionary.select(
                 "Start from:",
                 choices=[
-                    questionary.Choice("1) The existing source files (ssh/shared)", "existing"),
+                    questionary.Choice("1) An existing source (a CSV/JSON file or a Google Sheet)", "existing"),
                     questionary.Choice("2) From scratch (an empty database)", "new"),
                     questionary.Choice("Back (change the database path)", "back"),
                 ],
@@ -88,18 +100,50 @@ def cmd_init(args) -> int:
             if choice == "back":
                 db_path = None
                 step = "path"
-            else:
-                start = choice
+            elif choice == "new":
+                start = "new"
                 step = "done"
-    files = source_files(Path(args.shared)) if start == "existing" else []
+            else:
+                start = "existing"
+                step = "existing"
+        elif step == "existing":
+            import questionary
+            choice = _ask(lambda: questionary.select(
+                "Existing source:",
+                choices=[
+                    questionary.Choice("a) A local CSV or JSON Lines file", "file"),
+                    questionary.Choice("b) A Google Sheet", "sheet"),
+                    questionary.Choice("Back", "back"),
+                ],
+            ))
+            if choice is None:
+                raise SystemExit("init: cancelled")
+            if choice == "back":
+                step = "start"
+            elif choice == "sheet":
+                raise SystemExit("init: the Google Sheet import is not available yet; use a CSV or JSON file")
+            else:
+                step = "file"
+        elif step == "file":
+            import questionary
+            path = _ask(lambda: questionary.path("Path to the CSV or JSON Lines file:"))
+            if not path:
+                raise SystemExit("init: no file given")
+            step = "done"
+    if start == "existing" and path is None:
+        raise SystemExit("init: no source given")
+    created = not Path(db_path).exists()
     conn = db.connect(db_path)
     try:
         if conn.execute("SELECT COUNT(*) FROM host").fetchone()[0]:
             raise SystemExit(f"init: {db_path} already has hosts; it is not overwritten")
-        with conn:
-            if files:
-                convert.convert(conn, files)
-        hosts = conn.execute("SELECT COUNT(*) FROM host").fetchone()[0]
+        try:
+            hosts = source.import_file(conn, Path(path)) if start == "existing" else 0
+        except source.SourceError as exc:
+            conn.close()
+            if created:
+                Path(db_path).unlink(missing_ok=True)
+            raise SystemExit(f"init: nothing written; fix these and run again: {exc}") from None
     finally:
         conn.close()
     print(f"created {db_path} ({start}): {hosts} hosts")
@@ -150,8 +194,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("init", help="create the registry database, from existing source or empty")
     p.add_argument("--db", default=None, help="database path; asked for at the terminal if not given")
     p.add_argument("--start", choices=("existing", "new"), default=None,
-                   help="existing: from the source files; new: empty. Asked for if not given")
-    p.add_argument("shared", nargs="?", default="ssh/shared")
+                   help="existing: from a source file; new: empty. Asked for if not given")
+    p.add_argument("--source", default=None, help="CSV or JSON Lines file to import (with --start existing)")
     p.set_defaults(func=cmd_init)
 
     p = sub.add_parser("convert", help="one-time conversion from the source files")

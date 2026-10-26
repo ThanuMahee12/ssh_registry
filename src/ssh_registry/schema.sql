@@ -23,7 +23,7 @@ CREATE TABLE login (
 CREATE TABLE host (
   id              INTEGER PRIMARY KEY,
   name            TEXT NOT NULL UNIQUE CHECK (name <> ''),
-  kind            TEXT NOT NULL CHECK (kind IN ('on-prem','proxy','github','gitlab','default','EC2')),
+  kind            TEXT NOT NULL CHECK (kind IN ('on-prem','proxy','github','gitlab','default','EC2','bench','bench_env','devhub')),
   usage           TEXT NOT NULL DEFAULT 'cw' CHECK (usage IN ('cw','personal','shared')),
   hostname        TEXT CHECK (hostname IS NULL OR hostname <> ''),
   port            INTEGER CHECK (port IS NULL OR port BETWEEN 1 AND 65535),
