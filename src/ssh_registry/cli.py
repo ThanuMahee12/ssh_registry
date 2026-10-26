@@ -57,30 +57,40 @@ def ask_dir() -> str:
 
 
 def cmd_init(args) -> int:
-    """Create the registry database: from the existing source files, or empty."""
+    """Create the registry database: from the existing source files, or empty.
+
+    Interactive: 1) existing source, 2) from scratch, or Back to change the path.
+    """
     interactive = sys.stdin.isatty()
-    db_path = args.db
-    if db_path is None:
-        if not interactive:
-            raise SystemExit("init: give --db; there is no terminal to ask for it")
-        import questionary
-        db_path = _ask(lambda: questionary.path("Where should the database be created?"))
-        if not db_path:
-            raise SystemExit("init: no database path given")
-    start = args.start
-    if start is None:
-        if not interactive:
-            raise SystemExit("init: give --start existing or --start new")
-        import questionary
-        start = _ask(lambda: questionary.select(
-            "Start from:",
-            choices=[
-                questionary.Choice("The existing source files (ssh/shared)", "existing"),
-                questionary.Choice("A new empty database", "new"),
-            ],
-        ))
-        if start is None:
-            raise SystemExit("init: cancelled")
+    db_path, start = args.db, args.start
+    if (db_path is None or start is None) and not interactive:
+        raise SystemExit("init: give --db and --start existing|new; there is no terminal to ask")
+    step = "path" if db_path is None else ("start" if start is None else "done")
+    while step != "done":
+        if step == "path":
+            import questionary
+            db_path = _ask(lambda: questionary.path("Where should the database be created?"))
+            if not db_path:
+                raise SystemExit("init: no database path given")
+            step = "start"
+        elif step == "start":
+            import questionary
+            choice = _ask(lambda: questionary.select(
+                "Start from:",
+                choices=[
+                    questionary.Choice("1) The existing source files (ssh/shared)", "existing"),
+                    questionary.Choice("2) From scratch (an empty database)", "new"),
+                    questionary.Choice("Back (change the database path)", "back"),
+                ],
+            ))
+            if choice is None:
+                raise SystemExit("init: cancelled")
+            if choice == "back":
+                db_path = None
+                step = "path"
+            else:
+                start = choice
+                step = "done"
     files = source_files(Path(args.shared)) if start == "existing" else []
     conn = db.connect(db_path)
     try:
