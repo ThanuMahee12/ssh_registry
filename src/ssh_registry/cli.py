@@ -37,10 +37,24 @@ def cmd_convert(args) -> int:
     return 0
 
 
+def ask_dir() -> str:
+    """Ask for the output folder. Only possible at a terminal; there is no default."""
+    if not sys.stdin.isatty():
+        raise SystemExit("generate: give --dir; there is no terminal to ask for it")
+    try:
+        answer = input("Folder to write the generated config into: ").strip()
+    except EOFError:
+        raise SystemExit("generate: give --dir; there is no input to ask for it") from None
+    if not answer:
+        raise SystemExit("generate: no folder given")
+    return answer
+
+
 def cmd_generate(args) -> int:
+    folder = args.dir if args.dir is not None else ask_dir()
     conn = db.connect(args.db)
     try:
-        written = render.write_all(conn, Path(args.dir).expanduser(), args.person)
+        written = render.write_all(conn, Path(folder).expanduser(), args.person)
     finally:
         conn.close()
     for path in written:
@@ -84,7 +98,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("generate", help="write cw/personal/shared configs and shellrc.config")
     p.add_argument("--db", required=True)
-    p.add_argument("--dir", default="~", help="output directory (default: your home folder, ~)")
+    p.add_argument("--dir", default=None,
+                   help="output folder; asked for at the terminal if not given (no default)")
     p.add_argument("--person", default=None,
                    help="generate for one person (their logins win over shared); output in DIR/PERSON/")
     p.set_defaults(func=cmd_generate)
