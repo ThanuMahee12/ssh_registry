@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Generate each machine's ssh config from host JSONL kept in S3"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["questionary>=2.0"]
 
 [project.scripts]
 ssh-registry = "ssh_registry.cli:main"

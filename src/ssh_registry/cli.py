@@ -37,17 +37,63 @@ def cmd_convert(args) -> int:
     return 0
 
 
+def _ask(build):
+    """Build and run a questionary prompt. A terminal that can't show prompts stops with a message."""
+    try:
+        return build().ask()
+    except Exception as exc:  # e.g. Git Bash on Windows: no Windows console for the prompt
+        raise SystemExit(f"prompt unavailable here ({type(exc).__name__}); run the command in PowerShell or cmd") from None
+
+
 def ask_dir() -> str:
-    """Ask for the output folder. Only possible at a terminal; there is no default."""
+    """Ask for the output folder with questionary. Only possible at a terminal; there is no default."""
     if not sys.stdin.isatty():
         raise SystemExit("generate: give --dir; there is no terminal to ask for it")
-    try:
-        answer = input("Folder to write the generated config into: ").strip()
-    except EOFError:
-        raise SystemExit("generate: give --dir; there is no input to ask for it") from None
+    import questionary
+    answer = _ask(lambda: questionary.path("Folder to write the generated config into:"))
     if not answer:
         raise SystemExit("generate: no folder given")
     return answer
+
+
+def cmd_init(args) -> int:
+    """Create the registry database: from the existing source files, or empty."""
+    interactive = sys.stdin.isatty()
+    db_path = args.db
+    if db_path is None:
+        if not interactive:
+            raise SystemExit("init: give --db; there is no terminal to ask for it")
+        import questionary
+        db_path = _ask(lambda: questionary.path("Where should the database be created?"))
+        if not db_path:
+            raise SystemExit("init: no database path given")
+    start = args.start
+    if start is None:
+        if not interactive:
+            raise SystemExit("init: give --start existing or --start new")
+        import questionary
+        start = _ask(lambda: questionary.select(
+            "Start from:",
+            choices=[
+                questionary.Choice("The existing source files (ssh/shared)", "existing"),
+                questionary.Choice("A new empty database", "new"),
+            ],
+        ))
+        if start is None:
+            raise SystemExit("init: cancelled")
+    files = source_files(Path(args.shared)) if start == "existing" else []
+    conn = db.connect(db_path)
+    try:
+        if conn.execute("SELECT COUNT(*) FROM host").fetchone()[0]:
+            raise SystemExit(f"init: {db_path} already has hosts; it is not overwritten")
+        with conn:
+            if files:
+                convert.convert(conn, files)
+        hosts = conn.execute("SELECT COUNT(*) FROM host").fetchone()[0]
+    finally:
+        conn.close()
+    print(f"created {db_path} ({start}): {hosts} hosts")
+    return 0
 
 
 def cmd_generate(args) -> int:
@@ -90,6 +136,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ssh-registry")
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("init", help="create the registry database, from existing source or empty")
+    p.add_argument("--db", default=None, help="database path; asked for at the terminal if not given")
+    p.add_argument("--start", choices=("existing", "new"), default=None,
+                   help="existing: from the source files; new: empty. Asked for if not given")
+    p.add_argument("shared", nargs="?", default="ssh/shared")
+    p.set_defaults(func=cmd_init)
 
     p = sub.add_parser("convert", help="one-time conversion from the source files")
     p.add_argument("--db", required=True)
